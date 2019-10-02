@@ -1,0 +1,49 @@
+{
+  "name": "container-supervisor-server",
+  "version": "0.0.1",
+  "description": "Xandium Bot Hosting Service Supervisor Server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --inspect=5859 -r ts-node/register ./src/server.ts",
+    "start:watch": "nodemon",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xandium/container-supervisor.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/xandium/container-supervisor/issues"
+  },
+  "homepage": "https://github.com/xandium/container-supervisor#readme",
+  "dependencies": {
+    "@types/dotenv": "^6.1.1",
+    "@types/node": "^12.7.8",
+    "@types/redis": "^2.8.14",
+    "@types/ws": "^6.0.3",
+    "axios": "^0.19.0",
+    "bufferutil": "^4.0.1",
+    "dotenv": "^8.1.0",
+    "mysql2": "^1.7.0",
+    "redis": "^2.8.0",
+    "ts-node": "^8.4.1",
+    "typescript": "^3.6.3",
+    "utf-8-validate": "^5.0.2",
+    "ws": "^7.1.2"
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      ".git",
+      "node_modules"
+    ],
+    "watch": [
+      "src"
+    ],
+    "exec": "npm start",
+    "ext": "ts"
+  }
+}
