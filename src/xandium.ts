@@ -165,7 +165,7 @@ export class Xandium {
         //
       }
     });
-    this.subscriber.subscribe("xandium:manager-test");
+    this.subscriber.subscribe(process.env.REDIS_EVENT_CHANNEL);
     this.subscriber.on("message", (channel: string, message: string) => {
       console.log(`Redis message: ${channel} - ${message}`);
     });
