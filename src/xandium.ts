@@ -9,6 +9,7 @@ export class Xandium {
   websocket: WebSocket.Server;
   bots: Array<Bot>;
   redis: redis.RedisClient;
+  subscriber: redis.RedisClient;
   mysql;
   mysqlConnection;
 
@@ -100,9 +101,74 @@ export class Xandium {
       parseInt(process.env.REDIS_PORT),
       process.env.REDIS_HOST,
       {
-        password: process.env.REDIS_PASS
+        password: process.env.REDIS_PASS,
+        socket_keepalive: true,
+        retry_strategy: function(options) {
+          if (options.error && options.error.code === "ECONNREFUSED") {
+            // End reconnecting on a specific error and flush all commands with
+            // a individual error
+            return new Error("The server refused the connection");
+          }
+          if (options.total_retry_time > 1000 * 60 * 60) {
+            // End reconnecting after a specific timeout and flush all commands
+            // with a individual error
+            return new Error("Retry time exhausted");
+          }
+          if (options.attempt > 10) {
+            // End reconnecting with built in error
+            return undefined;
+          }
+          // reconnect after
+          return Math.min(options.attempt * 100, 3000);
+        }
       }
     );
+
+    this.redis.on("error", (err: any) => {
+      console.log(`Redis Error: ${err}`);
+      // Redis is giving up
+      if (err.code === "CONNECTION_BROKEN") {
+        //
+      }
+    });
+
+    this.subscriber = redis.createClient(
+      parseInt(process.env.REDIS_PORT),
+      process.env.REDIS_HOST,
+      {
+        password: process.env.REDIS_PASS,
+        socket_keepalive: true,
+        retry_strategy: function(options) {
+          if (options.error && options.error.code === "ECONNREFUSED") {
+            // End reconnecting on a specific error and flush all commands with
+            // a individual error
+            return new Error("The server refused the connection");
+          }
+          if (options.total_retry_time > 1000 * 60 * 60) {
+            // End reconnecting after a specific timeout and flush all commands
+            // with a individual error
+            return new Error("Retry time exhausted");
+          }
+          if (options.attempt > 10) {
+            // End reconnecting with built in error
+            return undefined;
+          }
+          // reconnect after
+          return Math.min(options.attempt * 100, 3000);
+        }
+      }
+    );
+    this.subscriber.on("error", (err: any) => {
+      console.log(`Redis Error: ${err}`);
+      // Redis is giving up
+      if (err.code === "CONNECTION_BROKEN") {
+        //
+      }
+    });
+    this.subscriber.subscribe("xandium:manager-test");
+    this.subscriber.on("message", (channel: string, message: string) => {
+      console.log(`Redis message: ${channel} - ${message}`);
+    });
   }
 
   async destroy() {
