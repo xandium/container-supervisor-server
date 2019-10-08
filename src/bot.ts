@@ -1,5 +1,8 @@
 import * as WebSocket from "ws";
 import { Xandium } from "./xandium";
+import * as https from "https";
+import { AxiosInstance, default as Axios } from "axios";
+import { rejects } from "assert";
 
 export class Bot {
   master: Xandium;
@@ -12,9 +15,15 @@ export class Bot {
   botId: string;
   internalUserId: number;
   internalBotId: number;
+  k8sId: string;
+  axios: AxiosInstance;
+  ip: string;
 
   constructor(master: Xandium) {
     this.master = master;
+    this.axios = Axios.create({
+      httpsAgent: new https.Agent({ rejectUnauthorized: false })
+    });
   }
 
   async onMessage(message: string) {
@@ -38,6 +47,32 @@ export class Bot {
         this.pullAll();
         break;
     }
+  }
+
+  closeWs() {
+    if (this.ws.readyState === this.ws.OPEN) {
+      this.ws.send("ERROR");
+      this.ws.close();
+    } else if (this.ws.readyState === this.ws.CONNECTING) {
+      this.ws.close();
+    }
+    this.ws.removeAllListeners();
+    this.ws = null;
+  }
+
+  setupCallbacks() {
+    this.ws.removeAllListeners("message");
+
+    this.ws.on("close", async (code: number, reason: string) => {
+      console.log(`WS Close: ${code} - ${reason}`);
+      this.closeWs();
+    });
+
+    this.ws.on("error", async (code: number, reason: string) => {
+      console.log(`WS Error: ${code} - ${reason}`);
+      this.closeWs();
+    });
+    this.ws.on("message", async (message: string) => this.onMessage(message));
   }
 
   async onLog(message: string) {
@@ -96,5 +131,38 @@ export class Bot {
 
   async execute(command: string) {
     this.ws.send(`execute ${command}`);
+  }
+
+  async fetchK8s() {
+    const axiosheaders = {
+      Accept: "application/json",
+      Authorization: "Bearer " + process.env.K8S_TOKEN
+    };
+    return new Promise((resolve, reject) => {
+      this.axios
+        .get(
+          `${process.env.K8S_URL}/api/v1/namespaces/xandium-free/pods?label=name=${this.k8sId}`,
+          {
+            headers: axiosheaders
+          }
+        )
+        .then(data => {
+          resolve(data);
+        })
+        .catch(err => reject(err));
+    });
+  }
+  async obtainK8sIp() {
+    return new Promise((resolve, reject) => {
+      this.fetchK8s()
+        .then(({ data }) => {
+          if (data.items == null || data.items.length === 0) {
+            reject("No valid pods found");
+          }
+          resolve(data.items[0].status.podIP);
+        })
+        .catch(err => reject(err));
+    });
+    // /api/v1/namespaces/xandium-free/pods?label=name=81151fd5b000001
   }
 }

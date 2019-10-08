@@ -10,10 +10,12 @@ export class Xandium {
   bots: Array<Bot>;
   redis: redis.RedisClient;
   subscriber: redis.RedisClient;
-  mysql;
-  mysqlConnection;
+  mysql: any;
+  mysqlConnection: any;
 
-  constructor() {}
+  constructor() {
+    this.bots = new Array<Bot>();
+  }
 
   async run() {
     dotenv.config();
@@ -52,6 +54,9 @@ export class Xandium {
           if (userRows.length === 0) {
             //fail
             ws.send("ERROR");
+            ws.close();
+            ws.removeAllListeners();
+            ws = null;
             return;
           }
 
@@ -66,7 +71,7 @@ export class Xandium {
           );
           if (rows.length === 0) {
             //fail
-            ws.send("ERROR");
+            bot.closeWs();
             return;
           }
 
@@ -80,20 +85,46 @@ export class Xandium {
           bot.deployment = row.deployment;
           bot.internalBotId = row.id;
           bot.botId = row.discord_id;
+          bot.k8sId = BigInt(bot.botId).toString(16);
+          // /api/v1/namespaces/xandium-free/pods?label=name=81151fd5b000001
 
-          ws.send("OK");
-          ws.send("status");
-          ws.removeAllListeners("message");
-          ws.on("message", async (message: string) => bot.onMessage(message));
+          bot
+            .obtainK8sIp()
+            .then((ip: string) => {
+              bot.ip = ip;
+              let tbot = this.bots.find((value: Bot) => {
+                if (value.internalBotId === bot.internalBotId) return true;
+              }, this);
+              // has bot connected before?
+              if (tbot == null) {
+                this.bots.push(bot);
+                bot.setupCallbacks();
+                ws.send("OK");
+                ws.send("status");
+              } else {
+                // is websocket connected?
+                if (tbot.ws != null) {
+                  console.log(
+                    `Bot connecting with already existing connection - ${bot.k8sId} | ${bot.internalBotId}`
+                  );
+                  bot.closeWs();
+                  return;
+                } else {
+                  // bot has connected before but is disconnected now. update info in case it may have changed
+                  tbot.ip = ip;
+                  tbot.ws = ws;
+                  bot.ws = null;
+                  tbot.setupCallbacks();
+                  tbot.ws.send("OK");
+                  tbot.ws.send("status");
+                }
+              }
+            })
+            .catch(err => {
+              console.log(`Error in K8s ip lookup - ${err}`);
+              bot.closeWs();
+            });
         }
-      });
-
-      ws.on("close", async (code: number, reason: string) => {
-        console.log(`WS Close: ${code} - ${reason}`);
-      });
-
-      ws.on("error", async (code: number, reason: string) => {
-        console.log(`WS Error: ${code} - ${reason}`);
       });
     });
 
@@ -192,29 +223,6 @@ export class Xandium {
     });
     //this.mysql.
   }
-
-  /*async addBot() {
-    mysql.execute(
-      "SELECT bots.id as internal_bot_id,bots.user_id,bots.username,bots.token,users.api_token_data,bots.discord_id as botid,users.discord_id as userid,users.id as internal_user_id,bots.deployment,bots.discriminator FROM bots LEFT JOIN users ON bots.user_id=users.id;",
-      (err, results) => {
-        //console.log(results);
-        if (results == null) return;
-        results.forEach(async bot => {
-          console.log(bot);
-          let deployment = bot.deployment ? bot.deployment : "No Deployment";
-          //const userhash = bot.internal_user_id.toString(16);//hash(bot.internal_user_id);
-          //const bothash = bot.internal_bot_id.toString(16);//hash(bot.internal_bot_id);
-          console.log(
-            `${bot.botid} - ${bot.username}#${bot.discriminator} - [${deployment}] - rmq: [${bot.user_id}-${bot.internal_bot_id}]`
-          );
-          allbots[bot.internal_bot_id] = bot;
-          allbots[bot.internal_bot_id].bot = new SnowTransfer(bot.token);
-
-          console.log(`Bot REST configured : ${bot.username}`);
-        });
-      }
-    );
-  }*/
 
   btoa(str: string): string {
     return Buffer.from(str, "base64").toString("ascii");
