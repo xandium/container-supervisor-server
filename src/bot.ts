@@ -2,7 +2,7 @@ import * as WebSocket from "ws";
 import { Xandium } from "./xandium";
 import * as https from "https";
 import { AxiosInstance, AxiosResponse, default as Axios } from "axios";
-import { rejects } from "assert";
+import * as utils from "./utils";
 
 export class Bot {
   master: Xandium;
@@ -101,7 +101,7 @@ export class Bot {
       let file: string = row.filename;
       let dir: string = row.directory;
       this.mkdir(dir);
-      this.update(file, this.master.atob(code));
+      this.update(file, utils.atob(code));
     });
   }
 
