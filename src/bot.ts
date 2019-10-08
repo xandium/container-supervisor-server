@@ -1,7 +1,7 @@
 import * as WebSocket from "ws";
 import { Xandium } from "./xandium";
 import * as https from "https";
-import { AxiosInstance, default as Axios } from "axios";
+import { AxiosInstance, AxiosResponse, default as Axios } from "axios";
 import { rejects } from "assert";
 
 export class Bot {
@@ -129,11 +129,13 @@ export class Bot {
     this.ws.send(`restart`);
   }
 
-  async execute(command: string) {
-    this.ws.send(`execute ${command}`);
+  async execute(command: string): Promise<void> {
+    return new Promise(resolve => {
+      resolve(this.ws.send(`execute ${command}`));
+    });
   }
 
-  async fetchK8s() {
+  async fetchK8s(): Promise<AxiosResponse<any>> {
     const axiosheaders = {
       Accept: "application/json",
       Authorization: "Bearer " + process.env.K8S_TOKEN
@@ -141,7 +143,7 @@ export class Bot {
     return new Promise((resolve, reject) => {
       this.axios
         .get(
-          `${process.env.K8S_URL}/api/v1/namespaces/xandium-free/pods?label=name=${this.k8sId}`,
+          `${process.env.K8S_URL}/api/v1/namespaces/xandium-free/pods?labelSelector=name=${this.k8sId}`,
           {
             headers: axiosheaders
           }
@@ -152,7 +154,7 @@ export class Bot {
         .catch(err => reject(err));
     });
   }
-  async obtainK8sIp() {
+  async obtainK8sIp(): Promise<string> {
     return new Promise((resolve, reject) => {
       this.fetchK8s()
         .then(({ data }) => {
@@ -163,6 +165,5 @@ export class Bot {
         })
         .catch(err => reject(err));
     });
-    // /api/v1/namespaces/xandium-free/pods?label=name=81151fd5b000001
   }
 }

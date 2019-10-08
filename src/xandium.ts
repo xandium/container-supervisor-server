@@ -48,15 +48,12 @@ export class Xandium {
 
         if (command === "login") {
           const [userRows] = await this.mysql.execute(
-            "SELECT * FROM users WHERE api_token_data= ?",
-            [password]
+            "SELECT * FROM users WHERE id= ?",
+            [userId]
           );
           if (userRows.length === 0) {
             //fail
-            ws.send("ERROR");
-            ws.close();
-            ws.removeAllListeners();
-            ws = null;
+            bot.closeWs();
             return;
           }
 
@@ -86,15 +83,19 @@ export class Xandium {
           bot.internalBotId = row.id;
           bot.botId = row.discord_id;
           bot.k8sId = BigInt(bot.botId).toString(16);
-          // /api/v1/namespaces/xandium-free/pods?label=name=81151fd5b000001
 
           bot
-            .obtainK8sIp()
-            .then((ip: string) => {
-              bot.ip = ip;
+            .fetchK8s()
+            .then(({ data }) => {
+              if (data.items == null || data.items.length === 0) {
+                throw new Error("No valid pods found");
+              }
+
+              bot.ip = data.items[0].status.podIP;
               let tbot = this.bots.find((value: Bot) => {
                 if (value.internalBotId === bot.internalBotId) return true;
               }, this);
+
               // has bot connected before?
               if (tbot == null) {
                 this.bots.push(bot);
@@ -111,7 +112,7 @@ export class Xandium {
                   return;
                 } else {
                   // bot has connected before but is disconnected now. update info in case it may have changed
-                  tbot.ip = ip;
+                  tbot.ip = data.items[0].status.podIP;
                   tbot.ws = ws;
                   bot.ws = null;
                   tbot.setupCallbacks();
