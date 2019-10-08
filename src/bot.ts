@@ -44,7 +44,11 @@ export class Bot {
         this.updateStatus("starting");
         break;
       case "pullall":
-        this.pullAll();
+        this.pullAll().then((value: Promise<void>[]) => {
+          Promise.all(value).then(() => {
+            this.ws.send("pullend");
+          });
+        });
         break;
     }
   }
@@ -86,7 +90,7 @@ export class Bot {
     this.master.redis.hset(`bots:${this.deployment}`, "status", status);
   }
 
-  async pullAll() {
+  async pullAll(): Promise<Array<Promise<void>>> {
     const [rows] = await this.master.mysql.execute(
       "SELECT * FROM code WHERE bot_id = ?",
       [this.internalBotId]
@@ -96,13 +100,20 @@ export class Bot {
       this.ws.send("ERROR");
       return;
     }
-    rows.forEach(row => {
-      let code: string = row.contents;
-      let file: string = row.filename;
-      let dir: string = row.directory;
-      this.mkdir(dir);
-      this.update(file, utils.atob(code));
+    let promises = new Array<Promise<void>>();
+    rows.forEach(async (row: any) => {
+      promises.push(
+        new Promise(resolve => {
+          let code: string = row.contents;
+          let file: string = row.filename;
+          let dir: string = row.directory;
+          this.mkdir(dir);
+          this.update(file, utils.atob(code));
+          resolve();
+        })
+      );
     });
+    return promises;
   }
 
   async rmdir(dir: string) {
