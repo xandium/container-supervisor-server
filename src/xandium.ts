@@ -114,6 +114,7 @@ export class Xandium {
                 bot.setupCallbacks();
                 ws.send("OK");
                 ws.send("status");
+                ws.send(`command ${bot.runCommand} ${bot.runArgs.join(' ')}`);
               } else {
                 // is websocket connected?
                 if (tbot.ws != null) {
@@ -130,6 +131,7 @@ export class Xandium {
                   tbot.setupCallbacks();
                   tbot.ws.send("OK");
                   tbot.ws.send("status");
+                  tbot.ws.send(`command ${tbot.runCommand} ${tbot.runArgs.join(' ')}`);
                 }
               }
             })
