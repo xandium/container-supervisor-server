@@ -187,7 +187,61 @@ export class Xandium {
     this.subscriber.subscribe(this.opts.redisChannel);
     this.subscriber.on("message", async (channel: string, message: string) => {
       console.log(`Redis message: ${channel} - ${message}`);
+
+      if (channel === `xandium:manager-test`) {
+        if (message === "manager stop") {
+          process.exit();
+          return;
+        }
+
+        let params: string[] = message.split(" ");
+        let botId: number = parseInt(params[1]);
+
+        if (params.length < 2) return;
+
+        /*let bot = this.bots.find((value: Bot) =>
+          value.internalBotId === botId ? true : false
+        );*/
+        let bot = this.bots.find((value: Bot) =>
+          value.internalBotId === botId ? true : false
+        );
+
+        if (bot === undefined) return;
+
+        switch (message.split(" ")[0]) {
+          case "stop":
+            bot.stop();
+            break;
+          case "start":
+            bot.start();
+            break;
+          case "update":
+            const [filename, contents]: [string, string] = await this.getCode(
+              params[2]
+            );
+            bot.update(filename, contents);
+            break;
+          case "regenerate":
+            bot.regenerate();
+            break;
+          case "kill":
+            bot.kill();
+            break;
+          case "reload":
+            bot.reload();
+            break;
+        }
+      }
     });
+  }
+
+  async getCode(code: string): Promise<[string, string]> {
+    let filename: string, contents: string;
+
+    filename = "";
+    contents = "";
+
+    return [filename, contents];
   }
 
   async destroy() {
