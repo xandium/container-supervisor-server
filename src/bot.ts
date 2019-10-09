@@ -6,7 +6,7 @@ import * as utils from "./utils";
 
 export class Bot {
   master: Xandium;
-  ws: WebSocket;
+  ws: WebSocket | null;
   botName: string;
   runCommand: string;
   runArgs: Array<string>;
@@ -28,7 +28,10 @@ export class Bot {
 
   async onMessage(message: string) {
     let tokens: Array<string> = message.split(" ");
-    let command: string = tokens.shift();
+    if (tokens.length < 1) return;
+    let command: string = tokens.shift()!;
+
+    console.log(`${this.internalBotId} : ${message}`);
 
     switch (command) {
       case "log":
@@ -46,7 +49,7 @@ export class Bot {
       case "pullall":
         this.pullAll().then((value: Promise<void>[]) => {
           Promise.all(value).then(() => {
-            this.ws.send("pullend");
+            if (this.ws) this.ws.send("pullend");
           });
         });
         break;
@@ -54,6 +57,7 @@ export class Bot {
   }
 
   closeWs() {
+    if (this.ws == null) return;
     if (this.ws.readyState === this.ws.OPEN) {
       this.ws.send("ERROR");
       this.ws.close();
@@ -65,6 +69,7 @@ export class Bot {
   }
 
   setupCallbacks() {
+    if (this.ws == null) return;
     this.ws.removeAllListeners("message");
 
     this.ws.on("close", async (code: number, reason: string) => {
@@ -95,12 +100,12 @@ export class Bot {
       "SELECT * FROM code WHERE bot_id = ?",
       [this.internalBotId]
     );
+    let promises = new Array<Promise<void>>();
     if (rows.length === 0) {
       //fail
-      this.ws.send("ERROR");
-      return;
+      if (this.ws) this.ws.send("ERROR");
+      return promises;
     }
-    let promises = new Array<Promise<void>>();
     rows.forEach(async (row: any) => {
       promises.push(
         new Promise(resolve => {
@@ -138,6 +143,22 @@ export class Bot {
 
   async restart() {
     this.ws?.send(`restart`);
+  }
+
+  async start() {
+    this.ws?.send(`start`);
+  }
+
+  async stop() {
+    this.ws?.send(`stop`);
+  }
+
+  async regenerate() {
+    this.ws?.send(`regenerate`);
+  }
+
+  async kill() {
+    this.ws?.send(`kill`);
   }
 
   async execute(command: string): Promise<void> {

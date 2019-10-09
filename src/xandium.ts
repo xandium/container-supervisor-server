@@ -1,9 +1,19 @@
 import * as WebSocket from "ws";
-import * as dotenv from "dotenv";
 import * as redis from "redis";
 import { Bot } from "./bot";
+// @ts-ignore
 import * as mysql from "mysql2";
 
+export interface XandiumOptions {
+  redisHost: string,
+  redisPort: number,
+  redisChannel: string,
+  redisPass: string
+  mysqlHost: string,
+  mysqlUser: string,
+  mysqlPass: string,
+  mysqlDatabase: string,
+};
 export class Xandium {
   websocket: WebSocket.Server;
   bots: Array<Bot>;
@@ -11,19 +21,20 @@ export class Xandium {
   subscriber: redis.RedisClient;
   mysql: any;
   mysqlConnection: any;
+  opts: XandiumOptions;
+  statusTimer: NodeJS.Timeout;
 
-  constructor() {
+  constructor(opts: XandiumOptions) {
     this.bots = new Array<Bot>();
+    this.opts = opts;
   }
 
   async run() {
-    dotenv.config();
-
     this.mysqlConnection = mysql.createPool({
-      host: process.env.MYSQL_HOST,
-      user: process.env.MYSQL_USER,
-      password: process.env.MYSQL_PASS,
-      database: process.env.MYSQL_DB,
+      host: this.opts.mysqlHost,
+      user: this.opts.mysqlUser,
+      password: this.opts.mysqlPass,
+      database: this.opts.mysqlDatabase,
       supportBigNumbers: true,
       bigNumberStrings: true,
       waitForConnections: true,
@@ -59,7 +70,7 @@ export class Xandium {
           let userRow = userRows[0];
 
           bot.userId = userRow.discord_id;
-          bot.internalUserId = userRow.id;
+          bot.internalUserId = parseInt(userRow.id);
 
           const [rows] = await this.mysql.execute(
             "SELECT * FROM bots WHERE user_id = ? AND id = ?",
@@ -75,11 +86,13 @@ export class Xandium {
 
           let tokens: Array<string> = row.runcommand.split(" ");
 
+          if (tokens.length < 2) return;
+
           bot.botName = row.username;
-          bot.runCommand = tokens.shift();
+          bot.runCommand = tokens.shift()!;
           bot.runArgs = tokens;
           bot.deployment = row.deployment;
-          bot.internalBotId = row.id;
+          bot.internalBotId = parseInt(row.id);
           bot.botId = row.discord_id;
           bot.k8sId = BigInt(bot.botId).toString(16);
 
@@ -91,9 +104,9 @@ export class Xandium {
               }
 
               bot.ip = data.items[0].status.podIP;
-              let tbot = this.bots.find((value: Bot) => {
-                if (value.internalBotId === bot.internalBotId) return true;
-              }, this);
+              let tbot = this.bots.find((value: Bot) =>
+                (value.internalBotId === bot.internalBotId) ? true : false
+              , this);
 
               // has bot connected before?
               if (tbot == null) {
@@ -127,14 +140,14 @@ export class Xandium {
         }
       });
     });
-
-    this.redis = redis.createClient(
-      parseInt(process.env.REDIS_PORT),
-      process.env.REDIS_HOST,
-      {
-        password: process.env.REDIS_PASS,
+    const opts: redis.ClientOpts = {
+      host: this.opts.redisHost,
+      port: this.opts.redisPort,
+      password: this.opts.redisPass,
         socket_keepalive: true,
-        retry_strategy: function(options) {
+      retry_strategy: function(
+        options: redis.RetryStrategyOptions
+      ): number | Error {
           if (options.error && options.error.code === "ECONNREFUSED") {
             // End reconnecting on a specific error and flush all commands with
             // a individual error
@@ -147,13 +160,13 @@ export class Xandium {
           }
           if (options.attempt > 10) {
             // End reconnecting with built in error
-            return undefined;
+          return new Error("Reconnect attempt exceeded");
           }
           // reconnect after
           return Math.min(options.attempt * 100, 3000);
         }
-      }
-    );
+    };
+    this.redis = redis.createClient(opts);
 
     this.redis.on("error", (err: any) => {
       console.log(`Redis Error: ${err}`);
@@ -163,32 +176,7 @@ export class Xandium {
       }
     });
 
-    this.subscriber = redis.createClient(
-      parseInt(process.env.REDIS_PORT),
-      process.env.REDIS_HOST,
-      {
-        password: process.env.REDIS_PASS,
-        socket_keepalive: true,
-        retry_strategy: function(options) {
-          if (options.error && options.error.code === "ECONNREFUSED") {
-            // End reconnecting on a specific error and flush all commands with
-            // a individual error
-            return new Error("The server refused the connection");
-          }
-          if (options.total_retry_time > 1000 * 60 * 60) {
-            // End reconnecting after a specific timeout and flush all commands
-            // with a individual error
-            return new Error("Retry time exhausted");
-          }
-          if (options.attempt > 10) {
-            // End reconnecting with built in error
-            return undefined;
-          }
-          // reconnect after
-          return Math.min(options.attempt * 100, 3000);
-        }
-      }
-    );
+    this.subscriber = redis.createClient(opts);
     this.subscriber.on("error", (err: any) => {
       console.log(`Redis Error: ${err}`);
       // Redis is giving up
@@ -196,21 +184,21 @@ export class Xandium {
         //
       }
     });
-    this.subscriber.subscribe(process.env.REDIS_EVENT_CHANNEL);
-    this.subscriber.on("message", (channel: string, message: string) => {
+    this.subscriber.subscribe(this.opts.redisChannel);
+    this.subscriber.on("message", async (channel: string, message: string) => {
       console.log(`Redis message: ${channel} - ${message}`);
     });
   }
 
   async destroy() {
-    let promises: Array<Promise<void>>;
+    let promises: Array<Promise<void>> = new Array<Promise<void>>();
 
     this.websocket.close(() => {
       this.bots.forEach(bot => {
         promises.push(
           new Promise(resolve => {
-            bot.ws.once("close", () => resolve);
-            bot.ws.close(1000, "Server has gone away");
+            bot.ws?.once("close", () => resolve);
+            bot.ws?.close(1000, "Server has gone away");
           })
         );
       });
@@ -219,7 +207,7 @@ export class Xandium {
     this.redis.end(true);
     //this.redis.quit();
     this.bots.forEach(bot => {
-      bot.ws.removeAllListeners();
+      bot.ws?.removeAllListeners();
     });
     //this.mysql.
   }
