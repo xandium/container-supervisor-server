@@ -117,32 +117,32 @@ export class Bot {
   }
 
   async rmdir(dir: string) {
-    this.ws.send(`rmdir ${dir}`);
+    this.ws?.send(`rmdir ${dir}`);
   }
 
   async mkdir(dir: string) {
-    this.ws.send(`mkdir ${dir}`);
+    this.ws?.send(`mkdir ${dir}`);
   }
 
   async update(file: string, contents: string) {
-    this.ws.send(`update ${file} ${contents}`);
+    this.ws?.send(`update ${file} ${contents}`);
   }
 
   async delete(file: string) {
-    this.ws.send(`delete ${file}`);
+    this.ws?.send(`delete ${file}`);
   }
 
   async reload() {
-    this.ws.send(`reload`);
+    this.ws?.send(`reload`);
   }
 
   async restart() {
-    this.ws.send(`restart`);
+    this.ws?.send(`restart`);
   }
 
   async execute(command: string): Promise<void> {
     return new Promise(resolve => {
-      resolve(this.ws.send(`execute ${command}`));
+      resolve(this.ws?.send(`execute ${command}`));
     });
   }
 
